@@ -52,8 +52,16 @@ def entry(sport, league_tag, ev, today):
     if state == "pre":
         text, detail = "%s @ %s" % (a, h), when
     else:
+        sit = comp.get("situation") or {}
+        if sport == "football" and state == "in" and sit.get("possession"):
+            if away["team"]["id"] == sit["possession"]:
+                a = "▸" + a
+            elif home["team"]["id"] == sit["possession"]:
+                h = "▸" + h
         text = "%s %s – %s %s" % (a, away.get("score", "0"), h, home.get("score", "0"))
         detail = clock_text(sport, status) if state == "in" else status["type"].get("shortDetail", "Final")
+        if sport == "football" and state == "in" and sit.get("downDistanceText"):
+            detail += " · " + sit["downDistanceText"] + (" RZ" if sit.get("isRedZone") else "")
     return {
         "id": ev["id"],
         "state": state,
