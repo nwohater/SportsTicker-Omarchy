@@ -1,0 +1,99 @@
+#!/usr/bin/env python3
+"""Fetch ESPN scoreboards and print a JSON list of ticker entries.
+
+usage: sports-fetch [--today] league [league ...]     (league = sport/league, e.g. baseball/mlb)
+"""
+import json
+import sys
+import urllib.request
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta
+
+BASE = "https://site.api.espn.com/apis/site/v2/sports/%s/scoreboard?dates=%s&limit=200"
+QUARTERS = {"football": "Q", "basketball": "Q", "hockey": "P"}
+REGULATION = {"football": 4, "basketball": 4, "hockey": 3}
+
+
+def get(url):
+    try:
+        with urllib.request.urlopen(url, timeout=8) as r:
+            return json.load(r)
+    except Exception:
+        return {}
+
+
+def clock_text(sport, status):
+    t = status.get("type", {})
+    if sport == "baseball":
+        return t.get("shortDetail", "")
+    if sport == "soccer":
+        return status.get("displayClock", "") or t.get("shortDetail", "")
+    if t.get("name") == "STATUS_IN_PROGRESS":
+        period = status.get("period", 0)
+        if period > REGULATION.get(sport, 4):
+            label = "OT" if period == REGULATION.get(sport, 4) + 1 else "%dOT" % (period - REGULATION.get(sport, 4))
+        else:
+            label = "%s%d" % (QUARTERS.get(sport, "P"), period)
+        return "%s %s" % (label, status.get("displayClock", ""))
+    return t.get("shortDetail", "")  # Halftime, End of 1st, ...
+
+
+def entry(sport, league_tag, ev, today):
+    comp = ev["competitions"][0]
+    teams = {c["homeAway"]: c for c in comp["competitors"]}
+    away, home = teams["away"], teams["home"]
+    status = ev["status"]
+    state = status["type"]["state"]
+    start = datetime.fromisoformat(ev["date"].replace("Z", "+00:00")).astimezone()
+    when = start.strftime("%-I:%M%p").replace("AM", "am").replace("PM", "pm")
+    if start.date() != today:
+        when = start.strftime("%a ") + when
+    a, h = away["team"]["abbreviation"], home["team"]["abbreviation"]
+    if state == "pre":
+        text, detail = "%s @ %s" % (a, h), when
+    else:
+        text = "%s %s – %s %s" % (a, away.get("score", "0"), h, home.get("score", "0"))
+        detail = clock_text(sport, status) if state == "in" else status["type"].get("shortDetail", "Final")
+    return {
+        "id": ev["id"],
+        "state": state,
+        "start": start.timestamp(),
+        "text": "%s  %s" % (text, detail),
+        "tooltip": "%s: %s" % (league_tag, ev.get("name", "")),
+        "local_date": start.date().isoformat(),
+    }
+
+
+def main():
+    args = sys.argv[1:]
+    today_only = "--today" in args
+    leagues = [a for a in args if not a.startswith("--")]
+    today = datetime.now().astimezone().date()
+    dates = [(today + timedelta(days=d)).strftime("%Y%m%d") for d in (-1, 0, 1)]
+    jobs = [(lg, d) for lg in leagues for d in dates]
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(lambda j: get(BASE % j), jobs))
+
+    seen, out = set(), []
+    for (lg, _), data in zip(jobs, results):
+        sport = lg.split("/")[0]
+        tag = lg.split("/")[1].upper()
+        for ev in data.get("events", []):
+            if ev["id"] in seen:
+                continue
+            seen.add(ev["id"])
+            try:
+                e = entry(sport, tag, ev, today)
+            except (KeyError, IndexError, ValueError):
+                continue
+            if today_only and e["state"] != "in" and e["local_date"] != today.isoformat():
+                continue
+            out.append(e)
+
+    order = {"in": 0, "pre": 1, "post": 2}
+    out.sort(key=lambda e: (order.get(e["state"], 3), e["start"]))
+    print(json.dumps(out))
+
+
+main()

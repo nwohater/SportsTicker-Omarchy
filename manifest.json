@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.nwohater.sportsticker",
+  "name": "Sports Ticker",
+  "version": "0.1.0",
+  "description": "Rotating live sports scores from ESPN in the Omarchy bar.",
+  "author": "nwohater",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Widget.qml"
+  },
+  "barWidget": {
+    "displayName": "Sports Ticker",
+    "description": "Rotating live scores; click for settings",
+    "category": "Info",
+    "allowMultiple": false,
+    "defaultSection": "center"
+  }
+}
