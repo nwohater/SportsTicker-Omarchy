@@ -13,6 +13,8 @@ and set how long each score stays up.
   MTL 2 – TOR 4  Final
 ```
 
+![Sports Ticker in the Omarchy bar, next to the clock](preview.png)
+
 Scores come from ESPN's public scoreboard. No account or API key is needed.
 
 ## Install
